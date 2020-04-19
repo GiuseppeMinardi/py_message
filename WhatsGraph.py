@@ -1,221 +1,160 @@
-"""
-This scripts reads Whatsapp chat log and prints some graphs.
+""" 
+This scripts reads Whatsapp chat log and prints some graphs. 
+Giuseppe Minardi 
+Jan 2019 
+03/08/16, 20:14 - Federica Selene Saltori Satta: Comunque non penso, uscire di casa presuppone lavarmi e darmi un aspetto umano
+""" 
+from datetime import datetime 
+import string 
+import numpy as np 
+import pandas as pd 
+import matplotlib.pyplot as plt 
+import seaborn as sns
+import matplotlib.dates as mdates
+years = mdates.YearLocator()   # every year
+months = mdates.MonthLocator()  # every month
 
-Giuseppe Minardi
-Jan 2019
-"""
-from datetime import datetime
-import string
+# Handle date time conversions between pandas and matplotlib
+from pandas.plotting import register_matplotlib_converters
+register_matplotlib_converters()
 
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-plt.style.use('seaborn-dark')
+plt.style.use('seaborn-dark') 
 
-from os import path
-from PIL import Image
-from wordcloud import WordCloud, ImageColorGenerator
-from nltk.corpus import stopwords
+from os import path 
+from PIL import Image 
+from wordcloud import WordCloud, ImageColorGenerator 
+from nltk.corpus import stopwords 
 stopWords = stopwords.words('italian')
-stopWords.extend(["pi","poi","cosa","perch",
-    "te","me","so","co","fatto","cos", "quando",
-    "quindi", "si", "no"])
-
 
 log = "./ChatWhatsApp.txt"
 
+def wapp_parsing(file):     
+    """     
+    This function parses the log file avoiding non-text lines, and avoiding     
+    problems from messages sent by the same person in one minute     
+    """     
+    Data = {"DateTime":[], "name":[], "msg":[]}
 
-Data = {'Date&Time':[],
-        'name':[],
-        'msg':[]
-       }
-prev = ""
-#=============================================================================
-def wapp_split(line):
-    """
-    This Function splits each line of the log in a dictionary
-    """
-    if line.find(':',14)!=-1:
-        splitted = line.split(' - ')
-        Data['Date&Time'].append(splitted[0])
-        splitted = splitted[1].split(':')
-        Data['name'].append(splitted[0])
-        Data['msg'].append(splitted[1][0:-1])
-#=============================================================================
-def wapp_parsing(file):
-    """
-    This function parses the log file avoiding non-text lines, and avoiding
-    problems from messages sent by the same person in one minute
-    """
-    print("Loading... Parsing the file.")
+    def lineSplitter(line):
+        """
+            This function splits each line of the log
+        """
+        if line.find(":") == 12:
+            splitted = line.split(' - ')
+            Data["DateTime"].append(splitted[0])
 
-    with open(file) as f:
-        for line in f:
+            splitted = splitted[1].split(":")
+            Data["name"].append(splitted[0])
 
-            if (len(line)!=0):
-                if (line[0] in string.digits) and (line[1]in string.digits):
-
-                    prev = line[0:line.find(':',15)+1]
-                    wapp_split(line)
-                else:
-
-                    line = prev + line
-                    wapp_split(line)
-#=============================================================================
-def BarPlotMonth(Data):
-    """
-    This function plots a barplot for the number of message sent for each
-    month and the mean length of the messages for each month
-    """
-
-    fig,axes = plt.subplots(2,1,
-            figsize=(18,10),
-            sharex = True)
+            Data["msg"].append(splitted[1][0:-1])
 
 
+    print("Loading... Parsing the file.")     
 
-    group_by_month_per_user = Data.groupby([
-        Data['Date&Time'].dt.strftime('%Y-%m'), 'name']
-        ).count().unstack()
+    with open(file) as f:         
+        prev = ""
+        for line in f:             
+            if (len(line)!=0):                 
+                if (line[0] in string.digits) and (line[1] in string.digits):                     
+                    prev = line[0: line.find(":", 14, -1)+1]                     
+                    lineSplitter(line)
+                else:                     
+                    line = prev + line                     
+                    lineSplitter(line)
+    return Data
 
-    group_by_month_per_user['msg_len'].plot(kind='bar',
-            stacked=True,
-            legend=['name'],
-            ax = axes[0])
-    axes[0].set_title('Number of text per month')
-    axes[0].set_ylabel('Count')
+def dataManipulation(data): 
+    """ 
+    This function manipulates the dataframe and extracts info 
+    """ 
+    data['DateTime'] = pd.to_datetime(data['DateTime'], dayfirst=True, infer_datetime_format=True) 
+    data['msgLen'] = data.msg.apply(lambda x: len(x.split())) 
+    data.set_index("DateTime", inplace = True)
+    return data
 
-    group_by_month_per_user = Data.groupby([
-        Data['Date&Time'].dt.strftime('%Y-%m'), 'name']
-        ).mean().unstack()
+def aggregateMonthName(data):
+    finalDF = pd.DataFrame()
 
-    group_by_month_per_user['msg_len'].plot(kind='bar',
-            stacked=True,
-            legend=['name'],
-            ax = axes[1])
-    axes[1].set_title('Mean lenght of a message per month')
-    axes[1].set_ylabel('Mean lenght')
-    axes[1].set_xlabel('Year-Month')
+    for name, DF in data.groupby(data["name"]):
+        temp = DF.resample("M").mean()
+        temp["name"] = name
+        finalDF = pd.concat([finalDF, temp])
 
-    axes[1].legend()
+    return(finalDF)
 
-    plt.xticks(rotation=90)
-    plt.savefig('WhatsApp_conversations.png')
-    #plt.show()
-#=============================================================================
-def BarPlotPeople(Data):
-    """
-    This function plots the number of message set by each person and the mean
-    length of each message wth errorbars
-    """
-    fig,axes = plt.subplots(2,1,
-            figsize=(18,10),
-            sharex = True)
+def separateMedia(data, hotkey = "<Media omessi>"):
 
-    for i,j in Data.groupby('name'):
-        axes[0].bar(i, j['msg_len'].count())
-        axes[1].bar(i, j['msg_len'].mean())
-    axes[0].set_ylabel('Number of message')
-    axes[1].set_ylabel('Mean words for message')
+    media = data[data["msg"].str.contains(hotkey, regex=False)]
+    notMedia = data[~data["msg"].str.contains(hotkey, regex=False)]
 
-    axes[0].set_title('Number of message for each person')
-    axes[1].set_title('Mean message length (words number) for each person')
+    return (media, notMedia)
 
-    plt.savefig('WhatsApp_people.png')
-    #plt.show()
-#=============================================================================
-def WordCloudPlot(Data, mask = None):
-    def transform_format(val):
-        if val == 0:
-            return 255
-        else:
-            return val
+def plotTotal(conversationDF):
 
-    if mask == None:
-        maskImage = None
-    else:
-        maskImage = np.array(Image.open(mask))
-
-    Data = Data[Data['msg'] != ' <Media omessi>']
-    txt = ' '.join(msg for msg in Data['msg'])
-
-    wordcloud = WordCloud(max_words=50000,
-            max_font_size = 10,
-            background_color="white",
-            mode = 'RGBA',
-            stopwords = stopWords,
-            mask = maskImage).generate(txt)
-
-    if mask == None:
-        plt.figure()
-        plt.imshow(wordcloud, interpolation='bilinear')
-    else:
-        img_colors = ImageColorGenerator(maskImage)
-        plt.figure()
-        plt.imshow(wordcloud.recolor(color_func = img_colors), interpolation="bilinear")
-    plt.axis("off")
-    #plt.show()
-    wordcloud.to_file("WhatsApp_WordCloud.png")
-#=============================================================================
-def BarPlotMedia(Data):
-    """
-    This function plots a barplot for the number of message sent for each
-    month and the mean length of the messages for each month
-    """
-
-    fig,axes = plt.subplots(figsize=(18,10))
+    conversationDF = conversationDF.resample('M').count()
 
 
+    date = pd.to_datetime(conversationDF.index.values)
+    fig, ax = plt.subplots(figsize=(32, 18))
 
-    group_by_month_per_user = Data.groupby([
-        Data['Date&Time'].dt.strftime('%Y-%m'), 'name']
-        ).count().unstack()
+#    ax.bar(conversationDF.index.values, conversationDF["msgLen"])
+    sns.barplot(x = date, y = conversationDF["msgLen"], ax = ax)
 
-    group_by_month_per_user['msg'].plot(kind='bar',
-            stacked=True,
-            legend=['name'],
-            ax = axes)
-    axes.set_title('Number of media per month (Images, video or audio)')
-    axes.set_ylabel('Count')
-    axes.set_xlabel('Year-Month')
 
-    axes.legend()
+    ax.set_xticklabels(date.strftime("%Y-%b"), 
+                       rotation = 65, 
+                       size = 30, 
+                       rotation_mode = "anchor",
+                       horizontalalignment= "right", 
+                       verticalalignment= "top")
+    ax.tick_params(axis='y', labelsize=30)
+    plt.ylabel("Number of messages", size = 35)
+    plt.savefig("TotalMsgMonth.png")
 
-    plt.xticks(rotation=90)
-    plt.savefig('WhatsApp_Media.png')
-    #plt.show()
-#=============================================================================
+def plotMeanMsgLength(data):
+    fig, ax = plt.subplots(2, 1, sharex='col', sharey= True, figsize = (16, 9))
+    plt.title("Mean message length")
+
+    for index, name in enumerate(conversationDF.name.unique()):
+
+        conversator = conversationDF[conversationDF["name"] == name]
+        date = pd.to_datetime(conversator.index.values)
+
+        sns.barplot(x = date, y = conversator["msgLen"], ax = ax[index])
+
+        ax[index].set_xticklabels(date.strftime("%Y-%b"), 
+                           rotation = 65, 
+                           rotation_mode = "anchor",
+                           horizontalalignment= "right", 
+                           verticalalignment= "top")
+        ax[index].set(ylabel=name)
+
+    plt.savefig("MeanMsgLength.png")
+
+def plotMedia(data):
+    fig, ax = plt.subplots()
+
+    sns.countplot(x="name", data=data, ax = ax)
+    plt.xlabel("")
+    plt.title("Photosm videos or audio exchanged")
+    plt.ylabel("Media number")
+
+    plt.savefig("numberOfMedia.png")
+
+
 
 
 if __name__ == '__main__':
-    # Pass the log to the parser
 
-    wapp_parsing(log)
+    conversationDF = dataManipulation(pd.DataFrame(wapp_parsing(log)))
+    print("Wait... I'm making the first plot")
+    plotTotal(conversationDF)
 
-    # DataFrame creation
+    conversationMedia ,conversationNoMedia = separateMedia(conversationDF)
+    print("Wait... I'm making the second plot")
+    plotMedia(conversationMedia)
 
-    Data = pd.DataFrame(Data)
-
-
-
-    # DataFrame handling
-    Data['Date&Time']=pd.to_datetime(Data['Date&Time'], dayfirst=True,
-                                     infer_datetime_format=True)
-
-    Data['msg_len'] = Data.msg.apply(lambda x: len(x.split()))
-
-    print("Loading... Plot (1/4)")
-    BarPlotMonth(Data)
-    print("Loading... Plot (2/4)")
-    BarPlotPeople(Data)
-    print("Loading... Plot (3/4)")
-    WordCloudPlot(Data, mask = './mask.png')
-
-    OnlyMedia = Data[Data["msg"] == ' <Media omessi>']
-    print("Loading... Plot (4/4)")
-    BarPlotMedia(OnlyMedia)
-
-
-    print('Done.')
-
+    conversationNoMedia = aggregateMonthName(conversationNoMedia)
+    print("Wait... I'm making the third plot")
+    plotMeanMsgLength(conversationNoMedia)
 
