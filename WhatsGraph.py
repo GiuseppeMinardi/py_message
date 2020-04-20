@@ -2,7 +2,6 @@
 This scripts reads Whatsapp chat log and prints some graphs. 
 Giuseppe Minardi 
 Jan 2019 
-03/08/16, 20:14 - Federica Selene Saltori Satta: Comunque non penso, uscire di casa presuppone lavarmi e darmi un aspetto umano
 """ 
 from datetime import datetime 
 import string 
