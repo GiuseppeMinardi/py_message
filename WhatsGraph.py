@@ -256,7 +256,7 @@ def WordCloudPlot(Data, mask = None):
     txt = ' '.join(msg for msg in Data['msg'])     
 
     wordcloud = WordCloud(max_words=50000,             
-                          max_font_size = 10,             
+                          max_font_size = 9,             
                           background_color="white",             
                           mode = 'RGBA',             
                           stopwords = stopWords,             
@@ -280,19 +280,64 @@ if __name__ == '__main__':
 
     conversationDF = dataManipulation(pd.DataFrame(wapp_parsing(log)))
     print("Wait... I'm making the first plot")
-    plotTotal(conversationDF)
+    #plotTotal(conversationDF)
     print("Wait... I'm making the second plot")
-    radialPlot(conversationDF)
+    #radialPlot(conversationDF)
 
     conversationMedia ,conversationNoMedia = separateMedia(conversationDF)
     print("Wait... I'm making the third plot")
-    plotMedia(conversationMedia)
+    #plotMedia(conversationMedia)
 
-    WordCloudPlot(conversationNoMedia, mask = mask)
+    #WordCloudPlot(conversationNoMedia, mask = mask)
     print("Wait... I'm making the 4th plot")
 
     conversationNoMedia = aggregateMonthName(conversationNoMedia)
     print("Wait... I'm making the 5th plot")
-    plotMeanMsgLength(conversationNoMedia)
+    #plotMeanMsgLength(conversationNoMedia)
+    
+    diff =conversationDF.index.max() - conversationDF.index.min()
+    print("Average number of messages per day {}".format(diff.days/conversationDF.shape[0]))
 
 
+    numberOfChar = conversationDF.msg.apply(lambda x: len(x)).sum()/conversationDF.shape[0]
+    print("Average letters per message {}".format(round(numberOfChar,2)))
+    numberOfwords = conversationDF.msg.apply(lambda x: len(x.split())).sum()/conversationDF.shape[0]
+    print("Average words per message {}".format(round(numberOfwords,2)))
+    
+    activeDay = conversationDF.resample("D").count()["msg"]
+    print("Most active day was {} with {} messages".format(activeDay.idxmax().strftime("%d-%b-%Y"), activeDay.max()))
+
+    activeDay = conversationDF.resample("D").count()["msg"]
+
+    startInactivity = None
+    stopInactivity = None
+    inactivityTime = 0
+    previousDayActive = False
+    endingList = [None, None, 0]
+    for index, value in activeDay.items():
+        if value == 0:
+            # if day before active and current day inactive
+            if previousDayActive:
+                # start inactivity and reset end inactivity
+                startInactivity = index
+                stopInactivity = None
+                previousDayActive = False
+            # if day before inactive and current day inactive
+            else:
+                # set end inactivity
+                stopInactivity = index
+            inactivityTime += 1
+        else:
+            if startInactivity != None and stopInactivity != None:
+                if endingList[2] < inactivityTime:
+                    endingList[0] = startInactivity
+                    endingList[1] = stopInactivity
+                    endingList[2] = inactivityTime
+            startInactivity = None
+            stopInactivity = None
+            previousDayActive = True
+            inactivityTime = 0
+
+    print("Most inactive time:\n\tfrom {} to {}, duration: {} days".format(endingList[0].strftime("%d-%b-%Y"), 
+                                                                           endingList[1].strftime("%d-%b-%Y"), 
+                                                                           endingList[2]))
