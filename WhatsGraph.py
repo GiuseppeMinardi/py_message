@@ -3,8 +3,11 @@ This scripts reads Whatsapp chat log and prints some graphs.
 Giuseppe Minardi 
 Jan 2019 
 """ 
+import argparse
+
 from datetime import datetime 
 import string 
+import time
 import numpy as np 
 import pandas as pd 
 import matplotlib.pyplot as plt 
@@ -50,7 +53,8 @@ def wapp_parsing(file):
 
 
     print("Loading... Parsing the file.")     
-
+    # if the same person sent 2 messages in a minutes the second message
+    # misses the date
     with open(file) as f:         
         prev = ""
         for line in f:             
@@ -61,6 +65,7 @@ def wapp_parsing(file):
                 else:                     
                     line = prev + line                     
                     lineSplitter(line)
+    print("File Parsed!")
     return Data
 #===============================================================================
 
@@ -237,6 +242,9 @@ def radialPlot(data):
     plt.savefig("radialPlot.png")
 #===============================================================================
 def WordCloudPlot(Data, mask = None):     
+    """
+        Create a wordcloud from all the text sent. In given a ong image the wordcloud will have the image of the mask colored with words
+    """
 
     def transform_format(val):         
         if val == 0:             
@@ -244,14 +252,14 @@ def WordCloudPlot(Data, mask = None):
         else:             
             return val     
 
-    if mask == None: 
-        maskImage = None     
-        maxWords = 200
-        maxFont = None
-    else: 
+    if mask != None: 
         maskImage = np.array(Image.open(mask))     
         maxWords = 50000
         maxFont = 10
+    else: 
+        maskImage = None     
+        maxWords = 200
+        maxFont = None
 
     txt = ' '.join(msg for msg in Data['msg'])     
 
@@ -273,41 +281,25 @@ def WordCloudPlot(Data, mask = None):
     wordcloud.to_file("WhatsApp_WordCloud.png")
 
     plt.close()     
+#===============================================================================
+
+def createReport(data):
+    f= open("report.txt","w+")
+
+    chatDayLength = data.index.max() - data.index.min()
+    f.write("Average number of messages per day {}\n".format(round(chatDayLength.days/data.shape[0], 2)))
 
 
+    numberOfChar = data.msg.apply(lambda x: len(x)).sum()/data.shape[0]
+    f.write("Average letters per message {}\n".format(round(numberOfChar,2)))
 
-if __name__ == '__main__':
-
-    conversationDF = dataManipulation(pd.DataFrame(wapp_parsing(log)))
-    print("Wait... I'm making the first plot")
-    #plotTotal(conversationDF)
-    print("Wait... I'm making the second plot")
-    #radialPlot(conversationDF)
-
-    conversationMedia ,conversationNoMedia = separateMedia(conversationDF)
-    print("Wait... I'm making the third plot")
-    #plotMedia(conversationMedia)
-
-    #WordCloudPlot(conversationNoMedia, mask = mask)
-    print("Wait... I'm making the 4th plot")
-
-    conversationNoMedia = aggregateMonthName(conversationNoMedia)
-    print("Wait... I'm making the 5th plot")
-    #plotMeanMsgLength(conversationNoMedia)
+    numberOfwords = data.msg.apply(lambda x: len(x.split())).sum()/data.shape[0]
+    f.write("Average words per message {}\n".format(round(numberOfwords,2)))
     
-    diff =conversationDF.index.max() - conversationDF.index.min()
-    print("Average number of messages per day {}".format(diff.days/conversationDF.shape[0]))
+    activeDay = data.resample("D").count()["msg"]
+    f.write("Most active day was {} with {} messages\n".format(activeDay.idxmax().strftime("%d-%b-%Y"), activeDay.max()))
 
-
-    numberOfChar = conversationDF.msg.apply(lambda x: len(x)).sum()/conversationDF.shape[0]
-    print("Average letters per message {}".format(round(numberOfChar,2)))
-    numberOfwords = conversationDF.msg.apply(lambda x: len(x.split())).sum()/conversationDF.shape[0]
-    print("Average words per message {}".format(round(numberOfwords,2)))
-    
-    activeDay = conversationDF.resample("D").count()["msg"]
-    print("Most active day was {} with {} messages".format(activeDay.idxmax().strftime("%d-%b-%Y"), activeDay.max()))
-
-    activeDay = conversationDF.resample("D").count()["msg"]
+    activeDay = data.resample("D").count()["msg"]
 
     startInactivity = None
     stopInactivity = None
@@ -318,7 +310,7 @@ if __name__ == '__main__':
         if value == 0:
             # if day before active and current day inactive
             if previousDayActive:
-                # start inactivity and reset end inactivity
+                # start inactivity and reset end inactivity 
                 startInactivity = index
                 stopInactivity = None
                 previousDayActive = False
@@ -333,11 +325,46 @@ if __name__ == '__main__':
                     endingList[0] = startInactivity
                     endingList[1] = stopInactivity
                     endingList[2] = inactivityTime
+
             startInactivity = None
             stopInactivity = None
             previousDayActive = True
             inactivityTime = 0
 
-    print("Most inactive time:\n\tfrom {} to {}, duration: {} days".format(endingList[0].strftime("%d-%b-%Y"), 
+    f.write("Most inactive time:\n\tfrom {} to {}, duration: {} days".format(endingList[0].strftime("%d-%b-%Y"), 
                                                                            endingList[1].strftime("%d-%b-%Y"), 
                                                                            endingList[2]))
+    f.close()
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--log", type = str, help = "File txt containing the chat log, downloaded with WhatsApp")
+    parser.add_argument("--mask", type = str, default = None, help = "Eventual image")
+    args  = parser.parse_args()
+    
+    log = args.log
+    mask = args.mask
+    
+    go = time.time()
+    conversationDF = dataManipulation(pd.DataFrame(wapp_parsing(log)))
+    print("I'm calculating the number of messages for each month!")
+    plotTotal(conversationDF)
+    print("I'm calculating the message frequency for each hour of the day!")
+    radialPlot(conversationDF)
+    
+    print("I'm creating the report!")
+    createReport(conversationDF)
+
+    conversationMedia ,conversationNoMedia = separateMedia(conversationDF)
+    print("I'm calculating how many media you shared!")
+    plotMedia(conversationMedia)
+
+    print("I'm making a wordcloud with your messages!")
+    WordCloudPlot(conversationNoMedia, mask = mask)
+
+    print("I'm calculating the mean message length!")
+    conversationNoMedia = aggregateMonthName(conversationNoMedia)
+    plotMeanMsgLength(conversationNoMedia)
+   
+    print("Done! execution time: {} seconds".format(round(time.time() - go)))
