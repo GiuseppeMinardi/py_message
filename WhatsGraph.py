@@ -25,11 +25,23 @@ from os import path
 from PIL import Image 
 from wordcloud import WordCloud, ImageColorGenerator 
 from nltk.corpus import stopwords 
-stopWords = stopwords.words('italian')
 
-log = "./ChatWhatsApp.txt"
-mask = "./turk-e-jd.png"
 #===============================================================================
+def parseArgouments():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--log",
+                        type = str, 
+                        help = "File txt containing the chat log, downloaded with WhatsApp")
+    parser.add_argument("--mask", 
+                        type = str, 
+                        default = None, 
+                        help = "Eventual image")
+    parser.add_argument("--lang", 
+                        type = str, 
+                        default = "english", 
+                        help = "Language of the conversation")
+    args  = parser.parse_args()
+    return(args)
 
 def wapp_parsing(file):     
     """     
@@ -48,8 +60,8 @@ def wapp_parsing(file):
 
             splitted = splitted[1].split(":")
             Data["name"].append(splitted[0])
-
-            Data["msg"].append(splitted[1][0:-1])
+            print(splitted)
+            Data["msg"].append(splitted[1][0:-1].lower())
 
 
     print("Loading... Parsing the file.")     
@@ -94,13 +106,13 @@ def aggregateMonthName(data):
     return(finalDF)
 #===============================================================================
 
-def separateMedia(data, hotkey = "<Media omessi>"):
+def separateMedia(data, hotkey = "<.*>"):
     """
     This function returns a tuple containing a dataframe with only media and one without media
     """
 
-    media = data[data["msg"].str.contains(hotkey, regex=False)]
-    notMedia = data[~data["msg"].str.contains(hotkey, regex=False)]
+    media = data[data["msg"].str.contains(hotkey, regex=True)]
+    notMedia = data[~data["msg"].str.contains(hotkey, regex=True)]
 
     return (media, notMedia)
 #===============================================================================
@@ -263,8 +275,9 @@ def WordCloudPlot(Data, mask = None):
 
     txt = ' '.join(msg for msg in Data['msg'])     
 
-    wordcloud = WordCloud(max_words=50000,             
-                          max_font_size = 9,             
+    wordcloud = WordCloud(width=1920, height=1080,
+                          max_words= maxWords,             
+                          max_font_size = maxFont,             
                           background_color="white",             
                           mode = 'RGBA',             
                           stopwords = stopWords,             
@@ -338,17 +351,15 @@ def createReport(data):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--log", type = str, help = "File txt containing the chat log, downloaded with WhatsApp")
-    parser.add_argument("--mask", type = str, default = None, help = "Eventual image")
-    args  = parser.parse_args()
+    args = parseArgouments()
+    stopWords = stopwords.words(args.lang)
     
     log = args.log
     mask = args.mask
     
     go = time.time()
     conversationDF = dataManipulation(pd.DataFrame(wapp_parsing(log)))
-    print("I'm calculating the number of messages for each month!")
+    print("\nI'm calculating the number of messages for each month!")
     plotTotal(conversationDF)
     print("I'm calculating the message frequency for each hour of the day!")
     radialPlot(conversationDF)
@@ -367,4 +378,4 @@ if __name__ == '__main__':
     conversationNoMedia = aggregateMonthName(conversationNoMedia)
     plotMeanMsgLength(conversationNoMedia)
    
-    print("Done! execution time: {} seconds".format(round(time.time() - go)))
+    print("\nDone! execution time: {} seconds".format(round(time.time() - go)))
