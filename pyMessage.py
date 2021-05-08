@@ -1,10 +1,14 @@
+"""
+This module provides functions useful to parse conversations extracted from
+different instant messages provider such WhatsApp e Telegram
+"""
 import csv
 import json
 import mmap
 import re
+from typing import Optional, Tuple, Iterable
 
 from tqdm import tqdm
-from typing import Optional, Tuple, Iterable
 
 
 def _check_integrity(record: str) -> Optional[str]:
@@ -43,7 +47,8 @@ def _get_text(record: str) -> str:
 
 def _get_num_lines(file_path: str) -> int:
     """
-    Taken from https://blog.nelsonliu.me/2016/07/30/progress-bars-for-python-file-reading-with-tqdm/
+    Taken from https://blog.nelsonliu.me/2016/07/30/progress-bars-for-python-file
+    -reading-with-tqdm/
 
     Parameters
     ----------
@@ -53,8 +58,8 @@ def _get_num_lines(file_path: str) -> int:
     -------
     int
     """
-    with open(file_path, "r+") as fp:
-        buf = mmap.mmap(fp.fileno(), 0)
+    with open(file_path, "r+") as f_path:
+        buf = mmap.mmap(f_path.fileno(), 0)
         lines = 0
         while buf.readline():
             lines += 1
@@ -64,6 +69,19 @@ def _get_num_lines(file_path: str) -> int:
 def _get_progressbar(file_iterator: Iterable[str],
                      file_path: str,
                      verbosity: bool = False) -> object:
+    """
+    If set to verbose returns a progressbar
+    Parameters
+    ----------
+    file_iterator :  Iterable[str]
+    file_path :  str
+    verbosity : bool
+
+    Returns
+    -------
+    object
+        a simple progressbar with tqdm
+    """
     if verbosity:
         return tqdm(file_iterator, total=_get_num_lines(file_path))
     return file_iterator
@@ -72,15 +90,17 @@ def _get_progressbar(file_iterator: Iterable[str],
 def _process_string(date_name: str,
                     text: str) -> Tuple[str, str, str]:
     """
-
+    return the row to write into a file
     Parameters
     ----------
-    date_name :
-    text :
+    date_name : str
+    text : str
 
     Returns
     -------
-
+    Tuple[str, str, str]
+        a tuple containing a date, the name of who sent the message
+        and the message
     """
     date_time, name = date_name.split(" - ")
     date_time = date_time.strip().replace(", ", "-")
@@ -88,19 +108,27 @@ def _process_string(date_name: str,
     return date_time, name, text
 
 
-def wapp_parsing(file_to_parse: str,
-                 file_to_read: str = "chat_whatsapp.csv",
-                 verbose: bool = True) -> None:
+def app_parsing(file_to_parse: str,
+                file_to_write: str = "chat_whatsapp.csv",
+                verbose: bool = True) -> None:
     """
-
+    WhatsApp parser. Takes the path of a conversation extracted from whatsapp
+    and creates a csv file easier to read with pandas
     Parameters
     ----------
-    file_to_parse :
-    file_to_read :
-    verbose :
+    file_to_parse : str
+        Path to a file to read
+    file_to_write : str
+        Name of the file to write. Default is ""chat_whatsapp.csv"
+    verbose : bool
+        If true prints a progressbar parsing the file
+
+    Returns
+    -------
+    None
     """
     with open(file_to_parse,
-              encoding="utf8") as wa_file, open(file_to_read,
+              encoding="utf8") as wa_file, open(file_to_write,
                                                 "w",
                                                 encoding="utf8") as wa_csv:
         writer = csv.writer(wa_csv, delimiter='\t')
@@ -121,12 +149,21 @@ def telegram_parsing(file_to_parse: str,
                      file_to_write: str = "chat_telegram.csv",
                      verbose: bool = True) -> None:
     """
+    Telegram parser. Takes the path of a conversation extracted from Telegram
+    in json format and creates a csv file easier to read with pandas
 
     Parameters
     ----------
-    file_to_parse :
-    file_to_write :
-    verbose :
+    file_to_parse : str
+        Path to a file to read
+    file_to_write : str
+        Name of the file to write. Default is ""chat_whatsapp.csv"
+    verbose : bool
+        If true prints a progressbar parsing the file
+
+    Returns
+    -------
+    None
     """
     with open(file_to_parse,
               encoding="utf8") as json_file, open(file_to_write,
