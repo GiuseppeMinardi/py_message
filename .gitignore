@@ -7,6 +7,12 @@ __pycache__/
 *.json
 *.html
 
+# Virtual Environment
+venv/
+env/
+.venv/
+.env/
+
 # C extensions
 *.so
 
